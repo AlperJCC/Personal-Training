@@ -31,7 +31,7 @@ app = Flask(__name__)
 
 # --- Config -----------------------------------------------------------
 DAXKO_BASE = "https://api.partners.daxko.com/api/v1"
-DAXKO_TOKEN_URL = "https://operations.oauth2.partners.daxko.com/token"
+DAXKO_TOKEN_URL = "https://api.partners.daxko.com/auth/token/"
 DAXKO_OAUTH_SCOPE = os.environ.get("DAXKO_OAUTH_SCOPE", "OPS_5413")
 
 DAXKO_CLIENT_ID = os.environ["DAXKO_CLIENT_ID"]
