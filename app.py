@@ -187,6 +187,53 @@ def healthz():
     })
 
 
+@app.route("/api/debug/offerings")
+def debug_offerings():
+    """
+    TEMPORARY debug endpoint — remove before going live. Dumps the current
+    offering cache so we can confirm what CATEGORY_ID actually resolved to,
+    without digging through log history.
+    """
+    return jsonify({
+        "category_id": CATEGORY_ID,
+        "branch_id": BRANCH_ID,
+        "offering_count": len(_offering_cache["offerings"]),
+        "offerings": _offering_cache["offerings"],
+        "last_refreshed": (
+            _offering_cache["last_refreshed"].isoformat()
+            if _offering_cache["last_refreshed"]
+            else None
+        ),
+    })
+
+
+@app.route("/api/debug/roster/<member_id>")
+def debug_roster(member_id):
+    """
+    TEMPORARY debug endpoint — remove before going live. Shows the raw
+    roster response Daxko returns for a given member against each cached
+    offering, so we can see exactly why a match is or isn't happening.
+    """
+    access_token = get_access_token()
+    results = []
+    for offering in _offering_cache["offerings"]:
+        program_id = offering["program_id"]
+        offering_id = offering["offering_id"]
+        resp = requests.get(
+            f"{DAXKO_BASE}/programs/{program_id}/offerings/{offering_id}/roster/{member_id}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            params={"location_id": BRANCH_ID},
+            timeout=10,
+        )
+        results.append({
+            "program_id": program_id,
+            "offering_id": offering_id,
+            "status_code": resp.status_code,
+            "body": resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text,
+        })
+    return jsonify(results)
+
+
 @app.route("/api/scan", methods=["POST"])
 def scan_member():
     """
