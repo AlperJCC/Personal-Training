@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Personal Training Check-In</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='kiosk.css') }}">
+</head>
+<body>
+  <main id="screen" class="state-idle">
+
+    <section id="view-idle" class="view">
+      <div class="scan-icon" aria-hidden="true">&#128278;</div>
+      <h1>Scan your membership barcode</h1>
+      <p class="hint">to check in for Personal Training</p>
+    </section>
+
+    <section id="view-loading" class="view">
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>Checking in&hellip;</h1>
+    </section>
+
+    <section id="view-redeemed" class="view">
+      <img id="redeemed-photo" class="member-photo" alt="">
+      <h1 id="redeemed-name"></h1>
+      <p class="status-line success">&#10003; Checked In</p>
+      <p id="redeemed-offering" class="detail"></p>
+      <p id="redeemed-instructor" class="detail"></p>
+      <p id="redeemed-remaining" class="detail-big"></p>
+    </section>
+
+    <section id="view-declined" class="view">
+      <img id="declined-photo" class="member-photo" alt="">
+      <h1 id="declined-name"></h1>
+      <p class="status-line declined" id="declined-message"></p>
+    </section>
+
+    <section id="view-error" class="view">
+      <div class="error-icon" aria-hidden="true">&#33;</div>
+      <h1 id="error-message"></h1>
+      <p class="hint">See front desk for help</p>
+    </section>
+
+  </main>
+
+  <!-- Always-focused hidden input captures the barcode scanner's
+       keyboard-wedge keystrokes; scanners terminate a scan with Enter. -->
+  <input id="scan-input" type="text" autocomplete="off" autofocus
+         inputmode="none" aria-hidden="true">
+
+  <script src="{{ url_for('static', filename='kiosk.js') }}"></script>
+</body>
+</html>
