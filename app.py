@@ -12,6 +12,7 @@ import os
 import threading
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import requests
 from flask import Flask, jsonify, render_template, request
@@ -38,6 +39,13 @@ DAXKO_CLIENT_ID = os.environ["DAXKO_CLIENT_ID"]
 DAXKO_CLIENT_SECRET = os.environ["DAXKO_CLIENT_SECRET"]
 
 BRANCH_ID = os.environ.get("BRANCH_ID", "B725")
+
+# Alper JCC Miami is Eastern time. Redemption timestamps must be sent in
+# the branch's local time — Render's server clock is UTC, and Daxko
+# rejects timestamps that appear to be in the future when compared
+# against local time. Configurable in case this app is ever reused for
+# a branch in a different timezone.
+BRANCH_TIMEZONE = ZoneInfo(os.environ.get("BRANCH_TIMEZONE", "America/New_York"))
 
 # Which category this kiosk is scoped to. Set per-deployment (env var), so
 # you could run multiple instances of this app for different programs
@@ -347,7 +355,7 @@ def scan_member():
 
     redeem_payload = {
         "registration_id": chosen["registration_id"],
-        "redemption_datetime": datetime.now().strftime("%m-%d-%Y %H:%M:%S"),
+        "redemption_datetime": datetime.now(BRANCH_TIMEZONE).strftime("%m-%d-%Y %H:%M:%S"),
     }
     if instructor_id:
         redeem_payload["instructor_id"] = instructor_id
