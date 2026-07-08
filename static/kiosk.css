@@ -1,11 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;600;700&display=swap');
+
+:root {
+  --alper-green: #7bc24f;
+  --alper-navy: #0b233f;
+  --alper-cyan: #09a6e0;
+  --alper-white: #ffffff;
+  --surface-bg: #eef1f4;      /* soft neutral behind the white card */
+  --text-muted: #5b6b7c;      /* navy-tinted gray for secondary text */
+  --border-subtle: #dde3ea;
+  --error: #d64545;           /* kept semantic/red — errors should read as errors regardless of palette */
+}
+
 * { box-sizing: border-box; }
 
 html, body {
   margin: 0;
   height: 100%;
-  background: #10151c;
-  color: #f4f6f8;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--surface-bg);
+  color: var(--alper-navy);
+  font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   overflow: hidden;
 }
 
@@ -14,17 +27,24 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  text-align: center;
   padding: 2rem;
   transition: background-color 0.2s ease;
 }
 
+/* Everything sits on a clean white card — reads as a polished, branded
+   kiosk rather than a bare full-bleed screen. */
 .view {
   display: none;
   flex-direction: column;
   align-items: center;
-  gap: 0.75rem;
-  max-width: 90vw;
+  gap: 0.85rem;
+  max-width: 32rem;
+  width: 100%;
+  background: var(--alper-white);
+  border-radius: 1.5rem;
+  padding: 3rem 2.5rem;
+  box-shadow: 0 1.5rem 3rem rgba(11, 35, 63, 0.12);
+  text-align: center;
 }
 
 .state-idle #view-idle,
@@ -36,72 +56,85 @@ html, body {
 }
 
 h1 {
-  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-weight: 700;
+  color: var(--alper-navy);
   margin: 0.25rem 0;
 }
 
 .hint {
-  font-size: 1.5rem;
-  color: #9aa7b5;
+  font-size: 1.25rem;
+  color: var(--text-muted);
   margin: 0;
 }
 
 .scan-icon {
-  font-size: 6rem;
+  font-size: 4.5rem;
+  width: 6.5rem;
+  height: 6.5rem;
+  line-height: 6.5rem;
+  border-radius: 50%;
+  background: rgba(9, 166, 224, 0.12);
+  color: var(--alper-cyan);
 }
 
 .spinner {
-  width: 5rem;
-  height: 5rem;
-  border: 0.5rem solid #2a3543;
-  border-top-color: #4da3ff;
+  width: 4rem;
+  height: 4rem;
+  border: 0.4rem solid var(--border-subtle);
+  border-top-color: var(--alper-cyan);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .member-photo {
-  width: 12rem;
-  height: 12rem;
+  width: 10rem;
+  height: 10rem;
   object-fit: cover;
   border-radius: 50%;
-  border: 0.35rem solid #2a3543;
-  background: #2a3543;
+  border: 0.3rem solid var(--border-subtle);
+  background: var(--border-subtle);
 }
+.state-redeemed .member-photo { border-color: var(--alper-green); }
+.state-declined .member-photo { border-color: #e0a716; }
 
 .status-line {
-  font-size: 1.75rem;
-  font-weight: 600;
+  font-size: 1.5rem;
+  font-weight: 700;
   margin: 0;
 }
-.status-line.success { color: #3ddc84; }
-.status-line.declined { color: #f5c542; }
+.status-line.success { color: var(--alper-green); }
+.status-line.declined { color: #b3820f; }
 
 .detail {
-  font-size: 1.3rem;
-  color: #cdd6e0;
+  font-size: 1.15rem;
+  color: var(--text-muted);
   margin: 0;
 }
 .detail-big {
-  font-size: 1.6rem;
+  font-size: 1.35rem;
   font-weight: 600;
+  color: var(--alper-navy);
   margin: 0.25rem 0 0;
 }
 
 .error-icon {
-  font-size: 5rem;
-  width: 6rem;
-  height: 6rem;
-  line-height: 6rem;
+  font-size: 3.5rem;
+  width: 5rem;
+  height: 5rem;
+  line-height: 5rem;
   border-radius: 50%;
-  background: #e5484d;
-  color: #10151c;
+  background: var(--error);
+  color: var(--alper-white);
   font-weight: 900;
 }
 
-.state-redeemed { background-color: #133220; }
-.state-declined { background-color: #3a3311; }
-.state-error { background-color: #3a1414; }
+/* Subtle brand-tinted backdrop per state, without overpowering the
+   white card itself. */
+.state-redeemed { background-color: #eef8ee; }
+.state-declined { background-color: #fbf3df; }
+.state-error { background-color: #fbeaea; }
 
 #scan-input {
   position: fixed;
@@ -109,4 +142,62 @@ h1 {
   left: -100px;
   opacity: 0;
   pointer-events: none;
+}
+
+/* Manual barcode entry — staff-only device, so this is a plain toggle,
+   no extra confirmation gate on top of physical access to the kiosk. */
+.link-button {
+  background: none;
+  border: none;
+  color: var(--alper-cyan);
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0.75rem 1rem; /* generous tap target for a touchscreen */
+  margin-top: 0.5rem;
+}
+.link-button:hover,
+.link-button:focus {
+  color: var(--alper-navy);
+}
+
+.manual-entry {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.manual-entry.hidden {
+  display: none;
+}
+.manual-entry input {
+  font-size: 1.2rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.6rem;
+  border: 0.12rem solid var(--border-subtle);
+  background: var(--alper-white);
+  color: var(--alper-navy);
+  width: 11rem;
+  text-align: center;
+  font-family: inherit;
+}
+.manual-entry input:focus {
+  outline: none;
+  border-color: var(--alper-cyan);
+  box-shadow: 0 0 0 0.2rem rgba(9, 166, 224, 0.18);
+}
+.manual-entry button {
+  font-size: 1.1rem;
+  font-weight: 700;
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.6rem;
+  border: none;
+  background: var(--alper-green);
+  color: var(--alper-white);
+  cursor: pointer;
+  font-family: inherit;
+}
+.manual-entry button:hover,
+.manual-entry button:focus {
+  background: #6aab41;
 }
