@@ -338,29 +338,25 @@ def scan_member():
             "offering_name": chosen["offering_name"],
         }), 200
 
+    # Instructor attribution is best-effort only — instructor_id is not
+    # required by /packages/redeem, and there's no way for an unattended
+    # kiosk to actually confirm who delivered the session anyway. A
+    # missing or unmapped default instructor should never block a real
+    # redemption; it just means this one entry has no instructor on record.
     instructor_id = resolve_instructor_id(chosen["default_instructor_name"])
-    if not instructor_id:
-        log_failure_note(
-            member_id, access_token,
-            f"Auto-redeem failed: unmapped instructor "
-            f"'{chosen['default_instructor_name']}' for {chosen['offering_name']}"
-        )
-        return jsonify({
-            "status": "error",
-            "reason": "unmapped_instructor",
-            "message": "Unable to process — see front desk",
-            "member": member_summary,
-        }), 200
+
+    redeem_payload = {
+        "registration_id": chosen["registration_id"],
+        "redemption_datetime": datetime.now().strftime("%m-%d-%Y %H:%M:%S"),
+    }
+    if instructor_id:
+        redeem_payload["instructor_id"] = instructor_id
 
     try:
         redeem_resp = requests.post(
             f"{DAXKO_BASE}/packages/redeem",
             headers={"Authorization": f"Bearer {access_token}"},
-            json={
-                "registration_id": chosen["registration_id"],
-                "redemption_datetime": datetime.now().strftime("%m-%d-%Y %H:%M:%S"),
-                "instructor_id": instructor_id,
-            },
+            json=redeem_payload,
             timeout=10,
         )
         redeem_resp.raise_for_status()
@@ -381,7 +377,7 @@ def scan_member():
         "status": "redeemed",
         "member": member_summary,
         "offering_name": chosen["offering_name"],
-        "instructor_name": chosen["default_instructor_name"],
+        "instructor_name": chosen["default_instructor_name"] if instructor_id else None,
         "remaining_instances": chosen["remaining_instances"] - 1,
         "total_instances": chosen["total_instances"],
     })
