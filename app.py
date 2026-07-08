@@ -207,31 +207,24 @@ def debug_offerings():
     })
 
 
-@app.route("/api/debug/roster/<member_id>")
-def debug_roster(member_id):
+@app.route("/api/debug/registrations/<member_id>")
+def debug_registrations(member_id):
     """
     TEMPORARY debug endpoint — remove before going live. Shows the raw
-    roster response Daxko returns for a given member against each cached
-    offering, so we can see exactly why a match is or isn't happening.
+    package registrations Daxko returns for a given member, so we can see
+    exactly what session_details looks like for real data.
     """
     access_token = get_access_token()
-    results = []
-    for offering in _offering_cache["offerings"]:
-        program_id = offering["program_id"]
-        offering_id = offering["offering_id"]
-        resp = requests.get(
-            f"{DAXKO_BASE}/programs/{program_id}/offerings/{offering_id}/roster/{member_id}",
-            headers={"Authorization": f"Bearer {access_token}"},
-            params={"location_id": BRANCH_ID},
-            timeout=10,
-        )
-        results.append({
-            "program_id": program_id,
-            "offering_id": offering_id,
-            "status_code": resp.status_code,
-            "body": resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text,
-        })
-    return jsonify(results)
+    resp = requests.get(
+        f"{DAXKO_BASE}/members/{member_id}/registrations",
+        headers={"Authorization": f"Bearer {access_token}"},
+        params={"program_type": "package"},
+        timeout=10,
+    )
+    return jsonify({
+        "status_code": resp.status_code,
+        "body": resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text,
+    })
 
 
 @app.route("/api/scan", methods=["POST"])
@@ -447,36 +440,45 @@ def log_failure_note(member_id, access_token, message):
 
 def find_active_packages_for_member(member_id, access_token):
     """
-    Loop only over offerings in the configured category (never touches
-    offerings outside CATEGORY_ID, so other paid programs are structurally
-    invisible to this kiosk). offering["program_id"] / offering["offering_id"]
-    are pre-flattened by refresh_offering_cache().
+    GET /members/{member_id}/registrations?program_type=package returns
+    ALL of the member's package registrations in one call, including
+    session_details (redemption counts, PP-prefixed registration_id, etc)
+    — the roster endpoint never returns session_details, despite matching
+    docs elsewhere; verified directly against a live response.
+
+    Category scoping is preserved by intersecting against the cached,
+    CATEGORY_ID-scoped offering list: a registration is only considered a
+    match if its (program_id, offering_id) pair is one this kiosk already
+    knows belongs to Personal Training. Any package the member has in a
+    different category is structurally excluded here, same guarantee as
+    before, just enforced client-side instead of via per-offering lookups.
     """
+    valid_offering_keys = {
+        (o["program_id"], o["offering_id"]) for o in _offering_cache["offerings"]
+    }
+
+    resp = requests.get(
+        f"{DAXKO_BASE}/members/{member_id}/registrations",
+        headers={"Authorization": f"Bearer {access_token}"},
+        params={"program_type": "package"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    registrations = resp.json().get("registrations", [])
+
     matches = []
-    for offering in _offering_cache["offerings"]:
-        program_id = offering["program_id"]
-        offering_id = offering["offering_id"]
-        if not program_id or not offering_id:
-            continue
+    for reg in registrations:
+        key = (reg.get("program_id"), reg.get("offering_id"))
+        if key not in valid_offering_keys:
+            continue  # not a Personal Training package — never considered
 
-        resp = requests.get(
-            f"{DAXKO_BASE}/programs/{program_id}/offerings/{offering_id}/roster/{member_id}",
-            headers={"Authorization": f"Bearer {access_token}"},
-            params={"location_id": BRANCH_ID},
-            timeout=10,
-        )
-        if resp.status_code == 404:
-            continue
-        resp.raise_for_status()
-        roster_entry = resp.json()
-
-        session_details = roster_entry.get("session_details")
+        session_details = reg.get("session_details")
         if session_details and session_details.get("status") == "active" \
                 and session_details.get("remaining_instances", 0) > 0:
             matches.append({
-                "program_id": program_id,
-                "offering_id": offering_id,
-                "offering_name": offering.get("name"),
+                "program_id": reg.get("program_id"),
+                "offering_id": reg.get("offering_id"),
+                "offering_name": reg.get("offering_name"),
                 "registration_id": session_details["registration_id"],
                 "expiration_date": session_details.get("expiration_date", ""),
                 "remaining_instances": session_details["remaining_instances"],
