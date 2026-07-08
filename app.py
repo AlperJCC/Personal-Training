@@ -66,9 +66,6 @@ else:
     INSTRUCTORS = _DEFAULT_INSTRUCTORS
 
 # --- OAuth token cache --------------------------------------------------
-# Auto-refreshing client-credentials token, shared across requests within
-# a worker process. WEB_CONCURRENCY=1 in production (see gunicorn.conf.py),
-# so a single in-memory cache is sufficient.
 _token_cache = {"access_token": None, "expires_at": 0}
 _token_lock = threading.Lock()
 TOKEN_REFRESH_MARGIN_SECONDS = 60
@@ -103,15 +100,18 @@ def get_access_token():
 
 
 # --- Cache of valid package offerings in this category -----------------
-# Refreshed periodically (daily by default) so each scan doesn't have to
-# hit /programs/offerings/search. Offering count per category is expected
-# to be small, so no pagination handling on this call.
 _offering_cache = {"offerings": [], "last_refreshed": None}
 _offering_cache_lock = threading.Lock()
 
 
 def refresh_offering_cache():
-    """Pull all package-type offerings scoped to CATEGORY_ID."""
+    """Pull all package-type offerings scoped to CATEGORY_ID.
+
+    NOTE: the search API nests program_id under offering["program"]["id"],
+    NOT a flat "program_id" key — verified against the OpenAPI spec. We
+    flatten it here on ingest so the rest of the app can use simple
+    offering["program_id"] / offering["offering_id"] access.
+    """
     access_token = get_access_token()
     resp = requests.get(
         f"{DAXKO_BASE}/programs/offerings/search",
@@ -125,12 +125,22 @@ def refresh_offering_cache():
     )
     resp.raise_for_status()
     data = resp.json()
+
+    flattened = []
+    for offering in data.get("offerings", []):
+        program = offering.get("program") or {}
+        flattened.append({
+            "offering_id": offering.get("id"),
+            "program_id": program.get("id"),
+            "name": offering.get("name") or program.get("name"),
+        })
+
     with _offering_cache_lock:
-        _offering_cache["offerings"] = data.get("offerings", [])
+        _offering_cache["offerings"] = flattened
         _offering_cache["last_refreshed"] = datetime.now(timezone.utc)
     log.info(
         "Offering cache refreshed: %d offering(s) in category %s",
-        len(_offering_cache["offerings"]),
+        len(flattened),
         CATEGORY_ID,
     )
 
@@ -188,17 +198,18 @@ def scan_member():
 
     try:
         access_token = get_access_token()
+        # NOTE: the /members/ search endpoint's active-filter param is
+        # named "active_only" (verified against spec), not "is_active_only".
         resp = requests.get(
-            f"{DAXKO_BASE}/members",
+            f"{DAXKO_BASE}/members/",
             headers={"Authorization": f"Bearer {access_token}"},
-            params={"barcode": barcode, "is_active_only": True},
+            params={"barcode": barcode, "active_only": True},
             timeout=10,
         )
         resp.raise_for_status()
         members = resp.json().get("members", [])
     except requests.RequestException:
         log.exception("Daxko API error during member lookup")
-        # No member_id yet, so nothing to attach an audit note to.
         return jsonify({
             "status": "error",
             "reason": "api_error",
@@ -215,10 +226,13 @@ def scan_member():
     member = members[0]
     member_id = member["member_id"]
     member_name = member.get("name", {})
-    member_photo = next(
-        (p["url"] for p in member.get("photos", []) if p.get("type") == "regular"),
-        None,
-    )
+
+    # The /members/ search response does NOT include photos (verified
+    # against spec) — only GET /members/{member_id} does. Fetch it as a
+    # separate, best-effort call so a photo-lookup hiccup never blocks
+    # a redemption.
+    member_photo = fetch_member_photo(member_id, access_token)
+
     member_summary = {
         "member_id": member_id,
         "first_name": member_name.get("preferred_name") or member_name.get("first_name"),
@@ -266,15 +280,10 @@ def scan_member():
         }), 200
 
     if len(matches) > 1:
-        # Policy: pick the package expiring soonest so members don't lose
-        # sessions to expiration.
         matches.sort(key=lambda m: m["expiration_date"])
 
     chosen = matches[0]
 
-    # Daily cap: one redemption per member per category per day.
-    # Doubles as the duplicate-scan guard (a rescan 30 seconds later
-    # hits this same check).
     if already_redeemed_today(chosen):
         return jsonify({
             "status": "declined",
@@ -333,6 +342,24 @@ def scan_member():
     })
 
 
+def fetch_member_photo(member_id, access_token):
+    """Best-effort photo lookup via the single-member detail endpoint.
+    Never blocks or fails the scan response if it errors out.
+    """
+    try:
+        resp = requests.get(
+            f"{DAXKO_BASE}/members/{member_id}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        photos = resp.json().get("photos", [])
+        return next((p["url"] for p in photos if p.get("type") == "regular"), None)
+    except requests.RequestException:
+        log.warning("Photo lookup failed for member %s", member_id)
+        return None
+
+
 def already_redeemed_today(package):
     """Check redeemed_sessions for any redemption dated today (local date)."""
     today = datetime.now().strftime("%m/%d/%Y")
@@ -370,12 +397,15 @@ def find_active_packages_for_member(member_id, access_token):
     """
     Loop only over offerings in the configured category (never touches
     offerings outside CATEGORY_ID, so other paid programs are structurally
-    invisible to this kiosk).
+    invisible to this kiosk). offering["program_id"] / offering["offering_id"]
+    are pre-flattened by refresh_offering_cache().
     """
     matches = []
     for offering in _offering_cache["offerings"]:
         program_id = offering["program_id"]
         offering_id = offering["offering_id"]
+        if not program_id or not offering_id:
+            continue
 
         resp = requests.get(
             f"{DAXKO_BASE}/programs/{program_id}/offerings/{offering_id}/roster/{member_id}",
