@@ -4,10 +4,14 @@
   const RESET_DELAY_MS = 3000;
   const screen = document.getElementById("screen");
   const input = document.getElementById("scan-input");
+  const manualToggle = document.getElementById("manual-entry-toggle");
+  const manualForm = document.getElementById("manual-entry-form");
+  const manualInput = document.getElementById("manual-entry-input");
 
   let buffer = "";
   let busy = false; // true while a scan is in flight or a result is showing
   let resetTimer = null;
+  let manualEntryOpen = false;
 
   // --- Sound cues -------------------------------------------------------
   // Synthesized tones (no binary asset files to manage/deploy) — clearly
@@ -71,13 +75,46 @@
     setState("idle");
     busy = false;
     buffer = "";
+    closeManualEntry();
     focusInput();
   }
 
   function focusInput() {
+    if (manualEntryOpen) return; // don't steal focus from the manual field
     input.value = "";
     input.focus();
   }
+
+  // --- Manual barcode entry ------------------------------------------
+  // Staff-only device (physical access to this kiosk is already the
+  // access control), so this is a plain toggle — no PIN or extra
+  // confirmation gate needed on top of that.
+  function openManualEntry() {
+    manualEntryOpen = true;
+    manualForm.classList.remove("hidden");
+    manualInput.value = "";
+    manualInput.focus();
+  }
+
+  function closeManualEntry() {
+    manualEntryOpen = false;
+    manualForm.classList.add("hidden");
+    manualInput.value = "";
+  }
+
+  manualToggle.addEventListener("click", () => {
+    getAudioCtx(); // unlock audio on first real user interaction
+    if (busy) return;
+    openManualEntry();
+  });
+
+  manualForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (busy) return;
+    const barcode = manualInput.value.trim();
+    closeManualEntry();
+    if (barcode) submitBarcode(barcode);
+  });
 
   function fmtName(member) {
     if (!member) return "";
@@ -163,9 +200,16 @@
     }
   });
 
-  // Keep the capture input focused no matter what the operator/member taps.
+  // Keep the capture input focused no matter what the operator/member taps
+  // — except while the manual-entry form is open, where focus needs to
+  // stay in that field instead.
   input.addEventListener("blur", () => setTimeout(focusInput, 50));
-  document.addEventListener("click", focusInput);
+  document.addEventListener("click", (e) => {
+    if (manualEntryOpen && (e.target === manualInput || manualForm.contains(e.target))) {
+      return; // let clicks inside the manual-entry form keep their focus
+    }
+    focusInput();
+  });
 
   resetToIdle();
 })();
