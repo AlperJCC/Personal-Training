@@ -359,6 +359,11 @@ def scan_member():
             json=redeem_payload,
             timeout=10,
         )
+        if not redeem_resp.ok:
+            log.error(
+                "Daxko redeem request failed: %s %s | payload: %s | body: %s",
+                redeem_resp.status_code, redeem_resp.reason, redeem_payload, redeem_resp.text,
+            )
         redeem_resp.raise_for_status()
     except requests.RequestException as e:
         log.exception("Daxko API error during redeem for member %s", member_id)
